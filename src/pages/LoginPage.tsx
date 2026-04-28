@@ -70,7 +70,7 @@ export default function LoginPage() {
             {authError ? <p className="error">{authError}</p> : null}
           </div>
           <p className="hint">
-            Tipp: Nach dem Login kannst du in der Budget-App auf „Jetzt synchronisieren“ drücken.
+            Tipp: Nach dem Login werden deine Daten automatisch synchronisiert.
           </p>
         </section>
       </main>

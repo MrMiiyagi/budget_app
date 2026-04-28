@@ -1,29 +1,10 @@
 import './App.css'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from './auth/useAuth'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
-
-type ExpenseCategory =
-  | 'Lebensmittel'
-  | 'Miete'
-  | 'Transport'
-  | 'Freizeit'
-  | 'Abos'
-  | 'Gesundheit'
-  | 'Shopping'
-  | 'Sonstiges'
-
-type Expense = {
-  id: string
-  date: string // YYYY-MM-DD
-  amountCents: number
-  category: ExpenseCategory
-  note: string
-  createdAt: number
-  updatedAt: number
-  deletedAt: number | null
-}
+import { BudgetContext, CATEGORIES, type Expense, type ExpenseCategory } from './budget/budgetContext'
 
 const STORAGE_KEY = 'budgetApp.expenses.v1'
 const STORAGE_SYNC_KEY = 'budgetApp.sync.v1'
@@ -122,17 +103,6 @@ function saveSyncState(state: SyncState) {
   localStorage.setItem(STORAGE_SYNC_KEY, JSON.stringify(state))
 }
 
-const CATEGORIES: ExpenseCategory[] = [
-  'Lebensmittel',
-  'Miete',
-  'Transport',
-  'Freizeit',
-  'Abos',
-  'Gesundheit',
-  'Shopping',
-  'Sonstiges',
-]
-
 function App() {
   const [expenses, setExpenses] = useState<Expense[]>(() => loadExpenses())
   const [syncState, setSyncState] = useState<SyncState>(() => loadSyncState())
@@ -142,14 +112,18 @@ function App() {
   })
 
   const { user, signOut } = useAuth()
-  const [syncError, setSyncError] = useState<string | null>(null)
+  const [, setSyncError] = useState<string | null>(null)
   const [syncBusy, setSyncBusy] = useState(false)
+  const syncTimerRef = useRef<number | null>(null)
+  const syncQueuedRef = useRef(false)
+  const lastLocalChangeAtRef = useRef<number | null>(null)
+  const [profileOpen, setProfileOpen] = useState(false)
+  const profileRef = useRef<HTMLDivElement | null>(null)
 
   const [date, setDate] = useState<string>(() => todayISO())
   const [amount, setAmount] = useState<string>('')
   const [category, setCategory] = useState<ExpenseCategory>('Lebensmittel')
   const [note, setNote] = useState<string>('')
-  const amountInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     saveExpenses(expenses)
@@ -158,6 +132,27 @@ function App() {
   useEffect(() => {
     saveSyncState(syncState)
   }, [syncState])
+
+  const hasInitialPull = Boolean(user && syncState.lastPulledAt)
+
+  useEffect(() => {
+    if (!profileOpen) return
+    const onPointerDown = (e: PointerEvent) => {
+      const el = profileRef.current
+      if (!el) return
+      if (e.target instanceof Node && el.contains(e.target)) return
+      setProfileOpen(false)
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setProfileOpen(false)
+    }
+    window.addEventListener('pointerdown', onPointerDown)
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown)
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [profileOpen])
 
   const filteredExpenses = useMemo(() => {
     const list = expenses.filter((e) => !e.deletedAt && monthFromDateISO(e.date) === filterMonth)
@@ -180,7 +175,6 @@ function App() {
   function addExpense() {
     const cents = parseAmountToCents(amount)
     if (!cents) {
-      amountInputRef.current?.focus()
       return
     }
     const newExpense: Expense = {
@@ -194,16 +188,17 @@ function App() {
       deletedAt: null,
     }
     setExpenses((prev) => [newExpense, ...prev])
+    lastLocalChangeAtRef.current = Date.now()
     setAmount('')
     setNote('')
     setFilterMonth(monthFromDateISO(date))
-    amountInputRef.current?.focus()
   }
 
   function deleteExpense(id: string) {
     setExpenses((prev) =>
       prev.map((e) => (e.id === id ? { ...e, deletedAt: Date.now(), updatedAt: Date.now() } : e)),
     )
+    lastLocalChangeAtRef.current = Date.now()
   }
 
   function mergeByUpdatedAt(local: Expense[], remote: Expense[]): Expense[] {
@@ -271,190 +266,164 @@ function App() {
     }
   }
 
+  function scheduleAutoSync() {
+    if (!supabase || !user) return
+    if (!hasInitialPull) return
+
+    syncQueuedRef.current = true
+    if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current)
+    syncTimerRef.current = window.setTimeout(async () => {
+      // If another sync is in flight, keep it queued and retry shortly.
+      if (syncBusy) {
+        syncTimerRef.current = window.setTimeout(scheduleAutoSync, 800)
+        return
+      }
+      if (!syncQueuedRef.current) return
+      syncQueuedRef.current = false
+      await syncNow()
+    }, 900)
+  }
+
+  useEffect(() => {
+    if (!supabase || !user) return
+    let cancelled = false
+
+    ;(async () => {
+      setSyncBusy(true)
+      setSyncError(null)
+      if (syncTimerRef.current) {
+        window.clearTimeout(syncTimerRef.current)
+        syncTimerRef.current = null
+      }
+      syncQueuedRef.current = false
+      try {
+        await pullFromCloud(user.id)
+      } catch (e) {
+        if (!cancelled) setSyncError(e instanceof Error ? e.message : 'Unbekannter Sync-Fehler')
+      } finally {
+        if (!cancelled) setSyncBusy(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id])
+
+  useEffect(() => {
+    if (!supabase || !user) return
+    // Don't auto-sync if nothing changed locally since last push.
+    if (!lastLocalChangeAtRef.current) return
+    scheduleAutoSync()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expenses, hasInitialPull, user?.id])
+
+  useEffect(() => {
+    if (!supabase || !user) return
+    const onOnline = () => scheduleAutoSync()
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') scheduleAutoSync()
+    }
+    window.addEventListener('online', onOnline)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.removeEventListener('online', onOnline)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasInitialPull, user?.id])
+
   // Auth actions are handled in the dedicated /login page.
 
   return (
-    <div className="app">
-      <header className="header">
-        <div className="headerTitle">
-          <h1>Budget</h1>
-          <p className="muted">
-            Ausgaben erfassen, filtern und summieren ({isSupabaseConfigured ? 'mit optionalem Sync' : 'lokal gespeichert'}
-            ).
-          </p>
-        </div>
-        <div className="headerActions">
-          <label className="field">
-            <span>Monat</span>
-            <input
-              type="month"
-              value={filterMonth}
-              onChange={(e) => setFilterMonth(e.target.value)}
-            />
-          </label>
-          <div className="stat">
-            <div className="statLabel">Summe</div>
-            <div className="statValue">{formatCents(totalFiltered)}</div>
+    <BudgetContext.Provider
+      value={{
+        expenses,
+        filteredExpenses,
+        totalsByCategory,
+        totalFiltered,
+        filterMonth,
+        setFilterMonth,
+        date,
+        setDate,
+        amount,
+        setAmount,
+        category,
+        setCategory,
+        note,
+        setNote,
+        addExpense,
+        deleteExpense,
+        formatCents,
+      }}
+    >
+      <div className="app">
+        <header className="header">
+          <div className="headerTitle">
+            <h1>Budget</h1>
           </div>
-        </div>
-      </header>
-
-      <main className="grid">
-        <section className="card">
-          <h2>Neue Ausgabe</h2>
-          <div className="form">
+          <div className="headerActions">
             <label className="field">
-              <span>Datum</span>
-              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              <span>Monat</span>
+              <input type="month" value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} />
             </label>
-
-            <label className="field">
-              <span>Betrag</span>
-              <input
-                ref={amountInputRef}
-                inputMode="decimal"
-                placeholder="z. B. 12,50"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') addExpense()
-                }}
-              />
-              <span className="hint">Komma oder Punkt ist ok.</span>
-            </label>
-
-            <label className="field">
-              <span>Kategorie</span>
-              <select value={category} onChange={(e) => setCategory(e.target.value as ExpenseCategory)}>
-                {CATEGORIES.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="field wide">
-              <span>Notiz (optional)</span>
-              <input
-                placeholder="z. B. Supermarkt, Ticket, ..."
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') addExpense()
-                }}
-              />
-            </label>
-
-            <div className="formActions">
-              <button type="button" className="primary" onClick={addExpense}>
-                Hinzufügen
-              </button>
-              <button
-                type="button"
-                className="ghost"
-                onClick={() => {
-                  setDate(todayISO())
-                  setAmount('')
-                  setCategory('Lebensmittel')
-                  setNote('')
-                  amountInputRef.current?.focus()
-                }}
-              >
-                Zurücksetzen
-              </button>
+            <div className="stat">
+              <div className="statLabel">Summe</div>
+              <div className="statValue">{formatCents(totalFiltered)}</div>
             </div>
-          </div>
-        </section>
-
-        <section className="card">
-          <h2>Account & Sync</h2>
-          {!isSupabaseConfigured ? (
-            <p className="muted">
-              Sync ist noch nicht konfiguriert. Lege eine <code>.env</code> an (siehe <code>.env.example</code>) und trage
-              deine Supabase Keys ein.
-            </p>
-          ) : (
-            <div className="stack">
-              <div className="row">
-                <div>
-                  <div className="statLabel">Angemeldet als</div>
-                  <div className="strong">{user?.email}</div>
-                </div>
-                <button type="button" className="ghost" onClick={signOut}>
-                  Abmelden
+            {isSupabaseConfigured && user ? (
+              <div className="profile" ref={profileRef}>
+                <button
+                  type="button"
+                  className="ghost"
+                  aria-haspopup="menu"
+                  aria-expanded={profileOpen}
+                  onClick={() => setProfileOpen((v) => !v)}
+                >
+                  Profil
                 </button>
+                {profileOpen ? (
+                  <div className="profileMenu" role="menu" aria-label="Profil Menü">
+                    <div className="profileEmail" role="presentation">
+                      {user.email ?? '—'}
+                    </div>
+                    <button
+                      type="button"
+                      className="danger profileLogout"
+                      role="menuitem"
+                      onClick={async () => {
+                        setProfileOpen(false)
+                        await signOut()
+                      }}
+                    >
+                      Abmelden
+                    </button>
+                  </div>
+                ) : null}
               </div>
-
-              <div className="muted">
-                Letzter Pull: {syncState.lastPulledAt ? new Date(syncState.lastPulledAt).toLocaleString('de-DE') : '—'}
-                <br />
-                Letzter Push: {syncState.lastPushedAt ? new Date(syncState.lastPushedAt).toLocaleString('de-DE') : '—'}
-              </div>
-
-              <div className="row">
-                <button type="button" className="primary" onClick={syncNow} disabled={syncBusy}>
-                  {syncBusy ? 'Synchronisiere…' : 'Jetzt synchronisieren'}
-                </button>
-                <span className="hint">Local-first: deine Daten bleiben auch offline nutzbar.</span>
-              </div>
-              {syncError ? <p className="error">{syncError}</p> : null}
-            </div>
-          )}
-        </section>
-
-        <section className="card">
-          <h2>Übersicht</h2>
-          {totalsByCategory.length > 0 ? (
-            <div className="chips">
-              {totalsByCategory.map((x) => (
-                <div key={x.category} className="chip" title={x.category}>
-                  <span className="chipLabel">{x.category}</span>
-                  <span className="chipValue">{formatCents(x.totalCents)}</span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="muted">Für diesen Monat gibt es noch keine Ausgaben.</p>
-          )}
-
-          <div className="tableWrap" role="region" aria-label="Ausgaben Tabelle">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Datum</th>
-                  <th>Kategorie</th>
-                  <th>Notiz</th>
-                  <th className="right">Betrag</th>
-                  <th className="right">Aktion</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredExpenses.map((e) => (
-                  <tr key={e.id}>
-                    <td className="mono">{e.date}</td>
-                    <td>{e.category}</td>
-                    <td className="muted">{e.note || '—'}</td>
-                    <td className="right strong">{formatCents(e.amountCents)}</td>
-                    <td className="right">
-                      <button type="button" className="danger" onClick={() => deleteExpense(e.id)}>
-                        Löschen
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            ) : null}
           </div>
-        </section>
-      </main>
+        </header>
 
-      <footer className="footer">
-        <span className="muted">
-          Tipp: Du kannst den Monat oben wechseln. Mit Supabase kannst du zusätzlich zwischen Geräten synchronisieren.
-        </span>
-      </footer>
-    </div>
+        <main className="layout">
+          <aside className="sidebar" aria-label="Navigation">
+            <div className="sidebarTitle">Seiten</div>
+            <nav className="sidebarNav">
+              <NavLink to="/app/home" className="sidebarLink">
+                Home
+              </NavLink>
+              <NavLink to="/app/overview" className="sidebarLink">
+                Übersicht
+              </NavLink>
+            </nav>
+          </aside>
+          <div className="content">
+            <Outlet />
+          </div>
+        </main>
+      </div>
+    </BudgetContext.Provider>
   )
 }
 

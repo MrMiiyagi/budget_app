@@ -1,7 +1,7 @@
 .app {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
+  width: 100%;
+  max-width: none;
+  margin: 0;
   min-height: 100svh;
   box-sizing: border-box;
   padding: 28px 18px 18px;
@@ -35,6 +35,92 @@
   align-items: flex-end;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 16px;
+  margin-top: 16px;
+  align-items: start;
+}
+
+.sidebar {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px;
+  background: color-mix(in oklab, var(--bg), var(--code-bg) 18%);
+  position: sticky;
+  top: 16px;
+}
+
+.sidebarTitle {
+  font-size: 12px;
+  opacity: 0.8;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin-bottom: 10px;
+}
+
+.sidebarNav {
+  display: grid;
+  gap: 8px;
+}
+
+.sidebarLink {
+  display: flex;
+  align-items: center;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-h);
+  text-decoration: none;
+  font-size: 14px;
+}
+
+.sidebarLink.active {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+}
+
+.content {
+  display: grid;
+  gap: 16px;
+}
+
+.profile {
+  position: relative;
+}
+
+.profileMenu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  min-width: 220px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 10px;
+  z-index: 10;
+}
+
+.profileEmail {
+  font-size: 13px;
+  opacity: 0.85;
+  text-align: left;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--bg), var(--code-bg) 25%);
+  border: 1px solid var(--border);
+}
+
+.profileLogout {
+  justify-self: stretch;
 }
 
 .grid {
@@ -256,13 +342,62 @@ button:focus-visible {
 }
 
 @media (max-width: 980px) {
-  .grid {
-    grid-template-columns: 1fr;
+  .app {
+    padding: 18px 14px 14px;
   }
   .header {
     flex-direction: column;
   }
+  .headerActions {
+    width: 100%;
+    justify-content: flex-start;
+    align-items: flex-start;
+  }
   .stat {
     min-width: unset;
+  }
+  .layout {
+    grid-template-columns: 1fr;
+  }
+  .sidebar {
+    position: static;
+  }
+  .sidebarTitle {
+    margin-bottom: 8px;
+  }
+  .sidebarNav {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .sidebarLink {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 640px) {
+  .headerTitle h1 {
+    font-size: 28px;
+  }
+  .form {
+    grid-template-columns: 1fr;
+  }
+  .table {
+    min-width: 520px;
+  }
+}
+
+@media (max-width: 420px) {
+  .app {
+    padding: 14px 10px 10px;
+  }
+  .card {
+    padding: 14px;
+  }
+  .profileMenu {
+    min-width: 180px;
   }
 }

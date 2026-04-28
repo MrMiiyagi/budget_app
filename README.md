@@ -63,7 +63,7 @@ npm run dev
 In der App:
 - Gehe zu `/#/login`
 - **Registrieren** (einmalig) oder **Anmelden**
-- Danach in der Budget-App auf **„Jetzt synchronisieren“** drücken
+- Danach läuft der Sync **automatisch** (local-first, mit Geräte-Abgleich über Supabase)
 
 ## Hinweise
 

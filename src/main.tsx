@@ -6,6 +6,8 @@ import App from './App.tsx'
 import { AuthProvider } from './auth/AuthProvider'
 import { ProtectedRoute } from './auth/ProtectedRoute'
 import LoginPage from './pages/LoginPage'
+import HomePage from './pages/HomePage'
+import MonthOverviewPage from './pages/MonthOverviewPage'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -20,7 +22,11 @@ createRoot(document.getElementById('root')!).render(
                 <App />
               </ProtectedRoute>
             }
-          />
+          >
+            <Route index element={<Navigate to="home" replace />} />
+            <Route path="home" element={<HomePage />} />
+            <Route path="overview" element={<MonthOverviewPage />} />
+          </Route>
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>

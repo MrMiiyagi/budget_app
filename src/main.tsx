@@ -12,8 +12,9 @@ createRoot(document.getElementById('root')!).render(
       <HashRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/" element={<App />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="/app" element={<App />} />
+          <Route path="/" element={<Navigate to="/login" replace />} />
+          <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </HashRouter>
     </AuthProvider>

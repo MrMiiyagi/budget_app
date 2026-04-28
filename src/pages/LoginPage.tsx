@@ -8,7 +8,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const location = useLocation()
 
-  const nextPath = (location.state as { from?: string } | null)?.from ?? '/'
+  const nextPath = (location.state as { from?: string } | null)?.from ?? '/app'
 
   useEffect(() => {
     clearAuthError()

@@ -1,7 +1,7 @@
 import './App.css'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Navigate, useLocation } from 'react-router-dom'
+import { Navigate } from 'react-router-dom'
 import { useAuth } from './auth/useAuth'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
 
@@ -143,7 +143,6 @@ function App() {
   })
 
   const { user, signOut } = useAuth()
-  const location = useLocation()
   const [syncError, setSyncError] = useState<string | null>(null)
   const [syncBusy, setSyncBusy] = useState(false)
 
@@ -279,7 +278,7 @@ function App() {
 
   return (
     <div className="app">
-      {shouldRedirectToLogin ? <Navigate to="/login" replace state={{ from: location.pathname }} /> : null}
+      {shouldRedirectToLogin ? <Navigate to="/login" replace state={{ from: '/app' }} /> : null}
       <header className="header">
         <div className="headerTitle">
           <h1>Budget</h1>

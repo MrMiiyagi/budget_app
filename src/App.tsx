@@ -1,7 +1,6 @@
 import './App.css'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Navigate } from 'react-router-dom'
 import { useAuth } from './auth/useAuth'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
 
@@ -160,8 +159,6 @@ function App() {
     saveSyncState(syncState)
   }, [syncState])
 
-  const shouldRedirectToLogin = isSupabaseConfigured && !user
-
   const filteredExpenses = useMemo(() => {
     const list = expenses.filter((e) => !e.deletedAt && monthFromDateISO(e.date) === filterMonth)
     list.sort((a, b) => (a.date === b.date ? b.createdAt - a.createdAt : b.date.localeCompare(a.date)))
@@ -278,7 +275,6 @@ function App() {
 
   return (
     <div className="app">
-      {shouldRedirectToLogin ? <Navigate to="/login" replace state={{ from: '/app' }} /> : null}
       <header className="header">
         <div className="headerTitle">
           <h1>Budget</h1>

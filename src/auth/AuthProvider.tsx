@@ -7,6 +7,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [user, setUser] = useState<User | null>(null)
   const [authError, setAuthError] = useState<string | null>(null)
+  const [isAuthReady, setIsAuthReady] = useState<boolean>(() => !supabase)
 
   useEffect(() => {
     if (!supabase) return
@@ -15,10 +16,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!active) return
       setSession(data.session ?? null)
       setUser(data.session?.user ?? null)
+      setIsAuthReady(true)
     })
     const { data: sub } = supabase.auth.onAuthStateChange((_evt, newSession) => {
       setSession(newSession)
       setUser(newSession?.user ?? null)
+      setIsAuthReady(true)
     })
     return () => {
       active = false
@@ -50,6 +53,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<AuthContextValue>(
     () => ({
       isSupabaseConfigured,
+      isAuthReady,
       user,
       session,
       authError,
@@ -58,7 +62,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signOut,
       clearAuthError: () => setAuthError(null),
     }),
-    [authError, session, user],
+    [authError, isAuthReady, session, user],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

@@ -3,6 +3,7 @@ import { createContext } from 'react'
 
 export type AuthContextValue = {
   isSupabaseConfigured: boolean
+  isAuthReady: boolean
   user: User | null
   session: Session | null
   authError: string | null
